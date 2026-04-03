@@ -1,3 +1,6 @@
+PyTelegramBotAPI
 aiogram
 openai
 python-dotenv
+Flask
+
