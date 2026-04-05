@@ -1,3 +1,4 @@
+import logging
 import asyncio
 import logging
 import random
@@ -7,6 +8,7 @@ from aiogram.filters import Command
 from aiogram.methods import DeleteWebhook
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from openai import OpenAI
+from keep_alive import keep_alive
 
 # ========== НАСТРОЙКИ (ВСТАВЬ СВОИ ДАННЫЕ) ==========
 TOKEN = '8653619802:AAHVlY7GBl89CRrD8vsBXlfs6SMLHcBDZns'
@@ -495,4 +497,5 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    keep_alive()  # Веб-серверді боттан бұрын іске қосамыз
     asyncio.run(main())
