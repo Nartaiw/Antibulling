@@ -12,6 +12,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
+from keep_alive import start_server
 from openai import OpenAI
 
 # ========== .env ЖҮКТЕУ ==========
@@ -605,4 +606,5 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    keep_alive()
     asyncio.run(main())
