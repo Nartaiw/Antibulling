@@ -12,9 +12,8 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from keep_alive import keep_alive  # Осы жерде жаңа файлды қосамыз
 from openai import OpenAI
-
+from keep_alive import keep_alive
 # ========== .env ЖҮКТЕУ ==========
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN", '8653619802:AAHVlY7GBl89CRrD8vsBXlfs6SMLHcBDZns')
@@ -606,5 +605,5 @@ async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    keep_alive()
+    keep_alive()  # Веб-серверді боттан бұрын іске қосамыз
     asyncio.run(main())
