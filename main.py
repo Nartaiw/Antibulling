@@ -1,28 +1,39 @@
-import logging
 import asyncio
 import logging
 import random
+import os
 from datetime import datetime
+from dotenv import load_dotenv
+
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.methods import DeleteWebhook
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.fsm.storage.memory import MemoryStorage
 from openai import OpenAI
-from keep_alive import keep_alive
 
-# ========== НАСТРОЙКИ (ВСТАВЬ СВОИ ДАННЫЕ) ==========
-TOKEN = '8653619802:AAHVlY7GBl89CRrD8vsBXlfs6SMLHcBDZns'
-API_KEY = 'sk-hedKmL95WT36pOWlDxlYtIK-hldUtBKSMqoOT1PKzcbY9Sh0Uin53TMISsaAukOe_GC4rIdAGdfTZ6wuy6nxcg'
+# ========== .env ЖҮКТЕУ ==========
+load_dotenv()
+TOKEN = os.getenv("BOT_TOKEN", '8653619802:AAHVlY7GBl89CRrD8vsBXlfs6SMLHcBDZns')
+API_KEY = os.getenv("OPENAI_API_KEY", 'sk-hedKmL95WT36pOWlDxlYtIK-hldUtBKSMqoOT1PKzcbY9Sh0Uin53TMISsaAukOe_GC4rIdAGdfTZ6wuy6nxcg')
+ADMIN_ID = int(os.getenv("ADMIN_ID", "789509485"))
 
-# ========== ЛОГИРОВАНИЕ И ИНИЦИАЛИЗАЦИЯ ==========
+# ========== ЛОГИРОВАНИЕ ЖӘНЕ БОТ ==========
 logging.basicConfig(level=logging.INFO)
 bot = Bot(TOKEN)
-dp = Dispatcher()
+storage = MemoryStorage()
+dp = Dispatcher(storage=storage)
 
-# Хранилище данных пользователей
+# Хранилище данных пользователей (кроме FSM)
 user_data = {}  # {user_id: {"language": "kk"/"ru"/"en", "problem_type": "bullying"/"cyberbullying", "mood": None, "test_step": 0, "answers": [], "diary": []}}
 
-# ========== ТЕКСТЫ НА ТРЁХ ЯЗЫКАХ ==========
+# ========== FSM КҮЙІ ==========
+class PsychologistState(StatesGroup):
+    waiting = State()  # пайдаланушы психологпен байланыста
+
+# ========== ТЕКСТТЕР ==========
 TEXTS = {
     "choose_language": {
         "kk": "🇰🇿 Тілді таңдаңыз:",
@@ -93,10 +104,30 @@ TEXTS = {
         "kk": "📖 **Менің мүмкіндіктерім:**\n\n• **Сөйлесу** – жағдайыңды жаз.\n• **Тыныс алу** – стреске қарсы жаттығу.\n• **Стресс-тест** – жағдайды тексеру.\n• **Ресурстар** – сенім телефондары.\n• **Көңіл-күй күнделігі** – сезіміңді жаз.\n• **Кездейсоқ кеңес** – қолдау.\n\nӨте ауыр болса, дереу **112** немесе **8-800-2000-122** нөмірлеріне қоңырау шал.",
         "ru": "📖 **Что я умею:**\n\n• **Просто поговорить** – напиши о своей ситуации.\n• **Дыхание** – антистресс-упражнение.\n• **Тест на стресс** – оценка состояния.\n• **Ресурсы** – телефоны доверия.\n• **Дневник настроения** – запиши чувства.\n• **Случайный совет** – поддержка.\n\nЕсли очень плохо, звони **112** или **8-800-2000-122**.",
         "en": "📖 **What I can do:**\n\n• **Just talk** – write about your situation.\n• **Breathing** – anti-stress exercise.\n• **Stress test** – assess your condition.\n• **Resources** – helplines.\n• **Mood diary** – write down your feelings.\n• **Random advice** – support.\n\nIf you're feeling very bad, call **112** or **8-800-2000-122**."
+    },
+    "psychologist_start": {
+        "kk": "🧑‍⚕️ Сіз психологпен байланыс режиміне ауыстыңыз. Енді жіберген әр хабарламаңыз тікелей психологке (админге) барады. Жауап күтіңіз.\n\nБайланысты үзу үшін «🚫 Психологпен байланысты үзу» батырмасын басыңыз.",
+        "ru": "🧑‍⚕️ Вы перешли в режим связи с психологом. Теперь каждое ваше сообщение будет отправляться напрямую психологу (админу). Ожидайте ответа.\n\nЧтобы прекратить общение, нажмите кнопку «🚫 Прервать связь с психологом».",
+        "en": "🧑‍⚕️ You have switched to psychologist contact mode. Now every message you send will go directly to the psychologist (admin). Wait for a reply.\n\nTo end the conversation, press the '🚫 Disconnect from psychologist' button."
+    },
+    "psychologist_stop": {
+        "kk": "✅ Психологпен байланыс аяқталды. Қалыпты режимге оралдыңыз. Басқа сұрақтарыңыз болса, көмек батырмаларын пайдаланыңыз.",
+        "ru": "✅ Связь с психологом завершена. Вы вернулись в обычный режим. Если есть вопросы, используйте кнопки помощи.",
+        "en": "✅ Connection with psychologist ended. You are back to normal mode. If you have questions, use the help buttons."
+    },
+    "forward_to_admin": {
+        "kk": "✉️ Хабарламаңыз психологке жіберілді. Жауап келетінше күтіңіз.",
+        "ru": "✉️ Ваше сообщение отправлено психологу. Дождитесь ответа.",
+        "en": "✉️ Your message has been sent to the psychologist. Please wait for a response."
+    },
+    "admin_reply": {
+        "kk": "🧑‍⚕️ **Психологтің жауабы:**\n{reply}",
+        "ru": "🧑‍⚕️ **Ответ психолога:**\n{reply}",
+        "en": "🧑‍⚕️ **Psychologist's reply:**\n{reply}"
     }
 }
 
-# Списки советов для random_advice на трёх языках
+# Списки советов для random_advice
 RANDOM_ADVICE_LISTS = {
     "kk": [
         "🌟 Егер ренжіп тұрсаң – бүгін алғысың келетін үш нәрсені жаз.",
@@ -127,52 +158,53 @@ RANDOM_ADVICE_LISTS = {
     ]
 }
 
-# ========== КЛАВИАТУРЫ ==========
+# ========== КЛАВИАТУРАЛАР ==========
 def get_language_keyboard():
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🇰🇿 Қазақша", callback_data="lang_kk"),
          InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru"),
          InlineKeyboardButton(text="🇬🇧 English", callback_data="lang_en")]
     ])
-    return kb
 
 def get_problem_type_keyboard(lang):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=TEXTS["bullying_btn"][lang], callback_data="type_bullying")],
         [InlineKeyboardButton(text=TEXTS["cyberbullying_btn"][lang], callback_data="type_cyberbullying")]
     ])
-    return kb
 
-def get_main_keyboard(lang, problem_type):
-    # problem_type может быть "bullying" или "cyberbullying" – но кнопки одинаковые, просто текст общий
-    # Тексты для кнопок берём из TEXTS, но они одинаковы для всех типов (кроме выбора типа)
-    btn_help = TEXTS["help_text"][lang]  # используем как ярлык? Лучше создать отдельные тексты для кнопок
-    # Создадим простые названия кнопок на трёх языках
+def get_main_keyboard(lang, problem_type, psychologist_mode=False):
+    """Негізгі инлайн клавиатура. psychologist_mode = True болса, «үзу» батырмасы қосылады"""
     btn_texts = {
         "kk": ["🆘 Көмек", "🧘 Тыныс алу", "📊 Стресс-тест", "📚 Ресурстар", "📝 Көңіл-күй", "💡 Кеңес"],
         "ru": ["🆘 Помощь", "🧘 Дыхание", "📊 Тест на стресс", "📚 Ресурсы", "📝 Настроение", "💡 Совет"],
         "en": ["🆘 Help", "🧘 Breathing", "📊 Stress test", "📚 Resources", "📝 Mood", "💡 Advice"]
     }
     btns = btn_texts[lang]
+    
+    # Қалыпты режимде "Онлайн Психолог" батырмасы, психолог режимінде "Байланысты үзу" батырмасы
+    if psychologist_mode:
+        extra_btn = [InlineKeyboardButton(text="🚫 Психологпен байланысты үзу", callback_data="stop_psychologist")]
+    else:
+        extra_btn = [InlineKeyboardButton(text="🧑‍⚕️ Онлайн Психолог", callback_data="start_psychologist")]
+    
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=btns[0], callback_data="help"),
          InlineKeyboardButton(text=btns[1], callback_data="breathing")],
         [InlineKeyboardButton(text=btns[2], callback_data="stress_test"),
          InlineKeyboardButton(text=btns[3], callback_data="resources")],
         [InlineKeyboardButton(text=btns[4], callback_data="mood_diary"),
-         InlineKeyboardButton(text=btns[5], callback_data="random_advice")]
+         InlineKeyboardButton(text=btns[5], callback_data="random_advice")],
+        extra_btn
     ])
     return kb
 
 def get_stress_keyboard(lang):
-    # Кнопки с цифрами одинаковы для всех языков
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="1️⃣", callback_data="stress_1"),
          InlineKeyboardButton(text="2️⃣", callback_data="stress_2"),
          InlineKeyboardButton(text="3️⃣", callback_data="stress_3"),
          InlineKeyboardButton(text="4️⃣", callback_data="stress_4")]
     ])
-    return kb
 
 def get_mood_keyboard(lang):
     mood_texts = {
@@ -181,21 +213,18 @@ def get_mood_keyboard(lang):
         "en": ["😢 Bad", "😐 Normal", "😊 Good"]
     }
     moods = mood_texts[lang]
-    kb = InlineKeyboardMarkup(inline_keyboard=[
+    return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text=moods[0], callback_data="mood_bad"),
          InlineKeyboardButton(text=moods[1], callback_data="mood_normal"),
          InlineKeyboardButton(text=moods[2], callback_data="mood_good")]
     ])
-    return kb
 
-# ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
+# ========== КӨМЕКШІ ФУНКЦИЯЛАР ==========
 async def get_ai_response(user_message: str, user_id: int, lang: str, problem_type: str) -> str:
-    """Запрос к OpenAI с учётом языка и типа проблемы"""
     client = OpenAI(
         base_url="https://api.langdock.com/openai/eu/v1",
         api_key=API_KEY
     )
-    # Базовый системный промпт с учётом типа проблемы
     if problem_type == "cyberbullying":
         problem_description = "кибербуллинг (травля в интернете, соцсетях, мессенджерах)."
         extra_advice = "Давай советы по кибербезопасности: скриншоты, блокировка, жалоба, не вступать в перепалку, сохранять доказательства."
@@ -231,11 +260,10 @@ async def get_ai_response(user_message: str, user_id: int, lang: str, problem_ty
         else:
             return "Извини, сейчас я перегружен. Попробуй написать позже 💙"
 
-# ========== ОБРАБОТЧИКИ КОМАНД И СООБЩЕНИЙ ==========
+# ========== ХЭНДЛЕРЛЕР ==========
 @dp.message(Command("start"))
 async def cmd_start(message: types.Message):
     user_id = message.from_user.id
-    # Инициализируем пользователя (пока без языка)
     user_data[user_id] = {
         "language": None,
         "problem_type": None,
@@ -244,7 +272,7 @@ async def cmd_start(message: types.Message):
         "diary": [],
         "last_action": None
     }
-    await message.answer(TEXTS["choose_language"]["ru"], reply_markup=get_language_keyboard())  # по умолчанию русский, но предложим выбор
+    await message.answer(TEXTS["choose_language"]["ru"], reply_markup=get_language_keyboard())
 
 @dp.message(Command("language"))
 async def cmd_language(message: types.Message):
@@ -262,44 +290,86 @@ async def cmd_change_type(message: types.Message):
 @dp.callback_query(F.data.startswith("lang_"))
 async def set_language(callback: CallbackQuery):
     user_id = callback.from_user.id
-    lang_code = callback.data.split("_")[1]  # kk, ru, en
+    lang_code = callback.data.split("_")[1]
     user_data[user_id]["language"] = lang_code
-    # После выбора языка предлагаем выбрать тип проблемы
     await callback.message.edit_text(TEXTS["choose_problem_type"][lang_code], reply_markup=get_problem_type_keyboard(lang_code))
     await callback.answer()
 
 @dp.callback_query(F.data.startswith("type_"))
 async def set_problem_type(callback: CallbackQuery):
     user_id = callback.from_user.id
-    problem_type = callback.data.split("_")[1]  # bullying or cyberbullying
+    problem_type = callback.data.split("_")[1]
     user_data[user_id]["problem_type"] = problem_type
     lang = user_data[user_id]["language"]
-    # Отправляем приветственное сообщение с главной клавиатурой
-    await callback.message.edit_text(TEXTS["welcome"][lang], reply_markup=get_main_keyboard(lang, problem_type))
+    await callback.message.edit_text(TEXTS["welcome"][lang], reply_markup=get_main_keyboard(lang, problem_type, psychologist_mode=False))
     await callback.answer()
 
-@dp.message(Command("help"))
-async def cmd_help(message: types.Message):
-    user_id = message.from_user.id
-    lang = user_data.get(user_id, {}).get("language", "ru")
-    await message.answer(TEXTS["help_text"][lang], parse_mode="Markdown", reply_markup=get_main_keyboard(lang, user_data.get(user_id, {}).get("problem_type", "bullying")))
+# ========== ОНЛАЙН ПСИХОЛОГ (FSM) ==========
+@dp.callback_query(F.data == "start_psychologist")
+async def start_psychologist(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    if user_id not in user_data or user_data[user_id].get("language") is None:
+        await callback.answer("Алдымен тілді таңдаңыз!", show_alert=True)
+        return
+    lang = user_data[user_id]["language"]
+    problem_type = user_data[user_id]["problem_type"]
+    await state.set_state(PsychologistState.waiting)
+    await callback.message.answer(
+        TEXTS["psychologist_start"][lang],
+        reply_markup=get_main_keyboard(lang, problem_type, psychologist_mode=True)
+    )
+    await callback.answer()
 
-@dp.message(F.text)
-async def handle_text(message: Message):
+@dp.callback_query(F.data == "stop_psychologist")
+async def stop_psychologist(callback: CallbackQuery, state: FSMContext):
+    user_id = callback.from_user.id
+    lang = user_data[user_id]["language"]
+    problem_type = user_data[user_id]["problem_type"]
+    await state.clear()
+    await callback.message.answer(
+        TEXTS["psychologist_stop"][lang],
+        reply_markup=get_main_keyboard(lang, problem_type, psychologist_mode=False)
+    )
+    await callback.answer()
+
+# ========== ХАБАРЛАМАЛАРДЫ ӨҢДЕУ ==========
+@dp.message(PsychologistState.waiting, F.text)
+async def handle_psychologist_message(message: Message, state: FSMContext):
+    """Психолог режиміндегі пайдаланушы хабарламасын админге жіберу"""
     user_id = message.from_user.id
     if user_id not in user_data or user_data[user_id].get("language") is None:
-        await message.answer("Сначала выберите язык /start или /language")
+        await message.answer("Алдымен тілді таңдаңыз /start")
+        await state.clear()
+        return
+    
+    lang = user_data[user_id]["language"]
+    # Хабарламаны админге жіберу (мәтін соңына user_id қосу)
+    forward_text = f"{message.text}\n\n[Пайдаланушы ID: {user_id}]"
+    try:
+        await bot.send_message(ADMIN_ID, forward_text)
+        await message.answer(TEXTS["forward_to_admin"][lang])
+    except Exception as e:
+        logging.error(f"Админге жіберу қатесі: {e}")
+        await message.answer("Кешіріңіз, хабарламаңызды жіберу мүмкін болмады. Кейінірек қайталаңыз.")
+
+@dp.message(F.text)
+async def handle_text(message: Message, state: FSMContext):
+    """Қалыпты режимдегі хабарламалар (AI немесе буллинг тексеру)"""
+    user_id = message.from_user.id
+    # Егер пайдаланушы әлі тіркелмесе, тіл таңдауға шақыру
+    if user_id not in user_data or user_data[user_id].get("language") is None:
+        await message.answer("Қош келдіңіз! Тіліңізді таңдаңыз:", reply_markup=get_language_keyboard())
         return
     if user_data[user_id].get("problem_type") is None:
         lang = user_data[user_id]["language"]
         await message.answer(TEXTS["choose_problem_type"][lang], reply_markup=get_problem_type_keyboard(lang))
         return
-
+    
     lang = user_data[user_id]["language"]
     problem_type = user_data[user_id]["problem_type"]
     text_lower = message.text.lower()
-
-    # Кризисная проверка на трёх языках
+    
+    # Кризис тексеру
     crisis_words = ["суицид", "покончить с собой", "не хочу жить", "умру", "смерть", "убить себя",
                     "өз-өзіме қол жұмсау", "өлгім келеді", "өлім", "suicide", "kill myself", "don't want to live"]
     if any(word in text_lower for word in crisis_words):
@@ -312,17 +382,16 @@ async def handle_text(message: Message):
         )
         await message.answer(crisis_response, parse_mode="Markdown", reply_markup=get_main_keyboard(lang, problem_type))
         return
-
-    # Проверка ключевых слов буллинга / кибербуллинга
+    
+    # Буллинг / кибербуллинг кілт сөздер
     bullying_keywords = ["обижают", "дразнят", "бьют", "травля", "буллинг", "издеваются", "смеются", "игнорируют",
                          "мазақтайды", "ұрып-соғады", "зорлық", "bullying", "harass", "mock", "ignore"]
     cyber_keywords = ["интернет", "соцсетей", "мессенджер", "онлайн", "чат", "кибер", "инстаграм", "тикток",
                       "whatsapp", "telegram", "желіде", "кибербуллинг", "cyberbullying", "online", "social media"]
-
+    
     is_bullying = any(kw in text_lower for kw in bullying_keywords)
     is_cyber = any(kw in text_lower for kw in cyber_keywords)
-
-    # Если явно упоминается кибербуллинг или интернет-травля, даём быстрый совет по кибербуллингу
+    
     if is_cyber or (problem_type == "cyberbullying" and is_bullying):
         quick = TEXTS["cyberbullying_quick_advice"][lang]
         await message.answer(quick, reply_markup=get_main_keyboard(lang, problem_type))
@@ -335,13 +404,52 @@ async def handle_text(message: Message):
         ai_response = await get_ai_response(message.text, user_id, lang, problem_type)
         await message.answer(ai_response, parse_mode="Markdown", reply_markup=get_main_keyboard(lang, problem_type))
         return
-
-    # Обычный диалог
+    
+    # Кәдімгі диалог (AI)
     await message.answer("🔍 Думаю...")
     ai_answer = await get_ai_response(message.text, user_id, lang, problem_type)
     await message.answer(ai_answer, parse_mode="Markdown", reply_markup=get_main_keyboard(lang, problem_type))
 
-# ========== INLINE КНОПКИ ==========
+# ========== АДМИННІҢ ЖАУАПТАРЫН ӨҢДЕУ ==========
+@dp.message(F.from_user.id == ADMIN_ID)
+async def handle_admin_reply(message: Message, state: FSMContext):
+    """Админ пайдаланушының хабарына reply жасағанда, сол жауапты пайдаланушыға жіберу"""
+    if not message.reply_to_message:
+        return  # админ жай хабарлама жіберсе – елемейміз
+    
+    # Админ жауап берген хабарламаның мәтінінде [Пайдаланушы ID: ...] бар ма?
+    original_text = message.reply_to_message.text
+    if not original_text:
+        return
+    
+    import re
+    match = re.search(r'\[Пайдаланушы ID: (\d+)\]', original_text)
+    if not match:
+        await message.answer("Бұл хабарламада пайдаланушы ID-сы жоқ. Тек бот жіберген хабарламаларға reply жасаңыз.")
+        return
+    
+    target_user_id = int(match.group(1))
+    reply_text = message.text
+    if not reply_text:
+        reply_text = "Психолог жауап жіберді (медиа қолданылмайды)."
+    
+    # Пайдаланушының тілін анықтау (оның user_data-сынан)
+    lang = "ru"
+    if target_user_id in user_data and user_data[target_user_id].get("language"):
+        lang = user_data[target_user_id]["language"]
+    
+    try:
+        await bot.send_message(
+            target_user_id,
+            TEXTS["admin_reply"][lang].format(reply=reply_text),
+            parse_mode="Markdown"
+        )
+        await message.answer(f"✅ Жауап {target_user_id} пайдаланушысына жіберілді.")
+    except Exception as e:
+        logging.error(f"Пайдаланушыға жауап жіберу қатесі: {e}")
+        await message.answer(f"Қате: жауапты жіберу мүмкін болмады. {e}")
+
+# ========== БАСҚА INLINE КНОПКАЛАР ==========
 @dp.callback_query(F.data == "help")
 async def inline_help(callback: CallbackQuery):
     user_id = callback.from_user.id
@@ -374,7 +482,7 @@ async def mood_diary(callback: CallbackQuery):
 async def save_mood(callback: CallbackQuery):
     user_id = callback.from_user.id
     lang = user_data.get(user_id, {}).get("language", "ru")
-    mood_key = callback.data.split("_")[1]  # bad, normal, good
+    mood_key = callback.data.split("_")[1]
     mood_map = {
         "bad": {"kk": "жаман", "ru": "плохое", "en": "bad"},
         "normal": {"kk": "қалыпты", "ru": "нормальное", "en": "normal"},
@@ -385,7 +493,7 @@ async def save_mood(callback: CallbackQuery):
         user_data[user_id]["diary"] = []
     user_data[user_id]["diary"].append({"date": datetime.now().strftime("%Y-%m-%d %H:%M"), "mood": mood_text})
     saved_msg = TEXTS["mood_saved"][lang].format(mood=mood_text)
-    await callback.message.answer(saved_msg, reply_markup=get_main_keyboard(lang, user_data[user_id].get("problem_type", "bullying")))
+    await callback.message.answer(saved_msg, reply_markup=get_main_keyboard(lang, user_data[user_id].get("problem_type", "bullying"), psychologist_mode=False))
     await callback.answer()
 
 @dp.callback_query(F.data == "random_advice")
@@ -394,7 +502,7 @@ async def random_advice(callback: CallbackQuery):
     lang = user_data.get(user_id, {}).get("language", "ru")
     advice_list = RANDOM_ADVICE_LISTS.get(lang, RANDOM_ADVICE_LISTS["ru"])
     advice = random.choice(advice_list)
-    await callback.message.answer(TEXTS["random_advice"][lang].format(advice=advice), parse_mode="Markdown", reply_markup=get_main_keyboard(lang, user_data[user_id].get("problem_type", "bullying")))
+    await callback.message.answer(TEXTS["random_advice"][lang].format(advice=advice), parse_mode="Markdown", reply_markup=get_main_keyboard(lang, user_data[user_id].get("problem_type", "bullying"), psychologist_mode=False))
     await callback.answer()
 
 @dp.callback_query(F.data == "stress_test")
@@ -487,15 +595,14 @@ async def process_stress_test(callback: CallbackQuery):
                 "en": "🧡 **High stress level** – your condition needs attention. Contact a school psychologist or call 8-800-2000-122."
             }
         result = result_texts[lang]
-        await callback.message.edit_text(TEXTS["stress_result"][lang].format(result=result), reply_markup=get_main_keyboard(lang, user_data[user_id].get("problem_type", "bullying")))
+        await callback.message.edit_text(TEXTS["stress_result"][lang].format(result=result), reply_markup=get_main_keyboard(lang, user_data[user_id].get("problem_type", "bullying"), psychologist_mode=False))
         user_data[user_id]["test_step"] = 0
     await callback.answer()
 
-# ========== ЗАПУСК БОТА ==========
+# ========== БОТТЫ ІСКЕ ҚОСУ ==========
 async def main():
     await bot(DeleteWebhook(drop_pending_updates=True))
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    keep_alive()  # Веб-серверді боттан бұрын іске қосамыз
     asyncio.run(main())
