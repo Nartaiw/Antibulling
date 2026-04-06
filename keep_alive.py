@@ -10,7 +10,7 @@ def home():
 
 def run():
     # Render-дің PORT айнымалысын аламыз немесе 10000 қолданамыз
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port)
 
 def keep_alive():
