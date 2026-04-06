@@ -12,7 +12,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from keep_alive import start_server
+from keep_alive import keep_alive  # Осы жерде жаңа файлды қосамыз
 from openai import OpenAI
 
 # ========== .env ЖҮКТЕУ ==========
