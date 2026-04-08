@@ -17,7 +17,7 @@ from keep_alive import keep_alive
 # ========== .env ЖҮКТЕУ ==========
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN", '8653619802:AAHVlY7GBl89CRrD8vsBXlfs6SMLHcBDZns')
-API_KEY = os.getenv("OPENAI_API_KEY", 'sk-hedKmL95WT36pOWlDxlYtIK-hldUtBKSMqoOT1PKzcbY9Sh0Uin53TMISsaAukOe_GC4rIdAGdfTZ6wuy6nxcg')
+API_KEY = os.getenv("OPENAI_API_KEY", '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')
 ADMIN_ID = int(os.getenv("ADMIN_ID", "789509485"))
 
 # ========== ЛОГИРОВАНИЕ ЖӘНЕ БОТ ==========
@@ -222,7 +222,7 @@ def get_mood_keyboard(lang):
 # ========== КӨМЕКШІ ФУНКЦИЯЛАР ==========
 async def get_ai_response(user_message: str, user_id: int, lang: str, problem_type: str) -> str:
     client = OpenAI(
-        base_url="https://api.langdock.com/openai/eu/v1",
+        base_url="https://openrouter.ai/api/v1/chat/completions",
         api_key=API_KEY
     )
     if problem_type == "cyberbullying":
@@ -244,7 +244,7 @@ async def get_ai_response(user_message: str, user_id: int, lang: str, problem_ty
     )
     try:
         completion = client.chat.completions.create(
-            model="gpt-5.4-mini",
+            model="stepfun/step-3.5-flash:free",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
