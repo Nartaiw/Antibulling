@@ -222,7 +222,7 @@ def get_mood_keyboard(lang):
 # ========== КӨМЕКШІ ФУНКЦИЯЛАР ==========
 async def get_ai_response(user_message: str, user_id: int, lang: str, problem_type: str) -> str:
     client = OpenAI(
-        base_url="https://openrouter.ai/api/v1/chat/completions",
+        base_url="https://openrouter.ai/api/v1W",
         api_key=API_KEY
     )
     if problem_type == "cyberbullying":
