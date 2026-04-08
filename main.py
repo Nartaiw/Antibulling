@@ -16,8 +16,8 @@ from openai import OpenAI
 from keep_alive import keep_alive
 # ========== .env ЖҮКТЕУ ==========
 load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN", '8653619802:AAHVlY7GBl89CRrD8vsBXlfs6SMLHcBDZns')
-API_KEY = os.getenv("OPENAI_API_KEY", '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')
+TOKEN = os.getenv("BOT_TOKEN")
+API_KEY = os.getenv("OPENAI_API_KEY")
 ADMIN_ID = int(os.getenv("ADMIN_ID", "789509485"))
 
 # ========== ЛОГИРОВАНИЕ ЖӘНЕ БОТ ==========
