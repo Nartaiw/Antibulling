@@ -244,7 +244,7 @@ async def get_ai_response(user_message: str, user_id: int, lang: str, problem_ty
     )
     try:
         completion = client.chat.completions.create(
-            model="stepfun/step-3.5-flash:free",
+            model="nvidia/nemotron-3-super-120b-a12b:free",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_message}
